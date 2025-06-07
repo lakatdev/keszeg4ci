@@ -6,6 +6,9 @@
 #include <ctype.h>
 #include <stdlib.h>
 
+#define INT_MIN -2147483648
+#define INT_MAX 2147483647
+
 void interpreter_halt()
 {
 
@@ -252,6 +255,89 @@ int interpreter_parse_functions(Interpreter_Instance* instance)
     return 0;
 }
 
+int is_purely_alphabetic(const char* str)
+{
+    if (!str || *str == '\0') {
+        return 0;
+    }
+    while (*str) {
+        if (!isalpha((unsigned char)*str)) {
+            return 0;
+        }
+        str++;
+    }
+    return 1;
+}
+
+Interpreter_Value interpreter_get_value_of_token(Interpreter_Instance* instance, const char* token)
+{
+    Interpreter_Value val;
+    val.type = TYPE_INT;
+    val.i = 0;
+
+    if (!token || *token == '\0') {
+        return val;
+    }
+
+    if (is_purely_alphabetic(token)) {
+        Interpreter_Value* var_val_ptr = interpreter_get_variable(instance, token);
+        if (var_val_ptr != NULL) {
+            return *var_val_ptr;
+        }
+        
+        return val;
+    }
+
+    unsigned long long int len = strlen(token);
+    char* endptr_byte_num;
+    char* endptr_float;
+    char* endptr_int;
+
+    if (len > 1 && (token[len - 1] == 'b' || token[len - 1] == 'B')) {
+        if (len - 1 < INTERPRETER_MAX_TOKEN_LENGTH) {
+            char numeric_part[INTERPRETER_MAX_TOKEN_LENGTH];
+            strncpy(numeric_part, token, len - 1);
+            numeric_part[len - 1] = '\0';
+
+            if (numeric_part[0] != '\0') {
+                long temp_long = strtol(numeric_part, &endptr_byte_num, 10);
+
+                if (numeric_part != endptr_byte_num && *endptr_byte_num == '\0' && temp_long >= 0 && temp_long <= 255) {
+                    val.type = TYPE_BYTE;
+                    val.b = (unsigned char)temp_long;
+                    return val;
+                }
+            }
+        }
+    }
+
+    float temp_float = strtof(token, &endptr_float);
+
+    if (token != endptr_float) {
+        if (*endptr_float == '\0') {
+            val.type = TYPE_FLOAT;
+            val.f = temp_float;
+            return val;
+        }
+        else if ((*endptr_float == 'f' || *endptr_float == 'F') && (endptr_float == &token[len - 1])) {
+            val.type = TYPE_FLOAT;
+            val.f = temp_float;
+            return val;
+        }
+    }
+
+    long temp_int_long = strtol(token, &endptr_int, 10);
+
+    if (token != endptr_int && *endptr_int == '\0') {
+        if (temp_int_long >= INT_MIN && temp_int_long <= INT_MAX) {
+            val.type = TYPE_INT;
+            val.i = (int)temp_int_long;
+            return val;
+        }
+    }
+    return val;
+}
+
 void interpreter_declare_variable(Interpreter_Instance* instance, const char* name, Interpreter_VarType type)
 {
     if (instance->stack_pointer < 0) {
@@ -270,6 +356,14 @@ void interpreter_declare_variable(Interpreter_Instance* instance, const char* na
         }
     }
 
+    for (int i = 0; i < current_frame->ref_count; i++) {
+        if (interpreter_ci_strcmp(current_frame->refs[i].name, name) == 0) {
+            printf("Error: A reference with the name %s already exists in the current scope\n", name);
+            interpreter_halt();
+            return;
+        }
+    }
+
     if (current_frame->local_var_count >= INTERPRETER_MAX_VARIABLES) {
         printf("Error: Too many variables in current scope\n");
         interpreter_halt();
@@ -280,6 +374,7 @@ void interpreter_declare_variable(Interpreter_Instance* instance, const char* na
     strncpy(new_var->name, name, INTERPRETER_MAX_NAME - 1);
     new_var->name[INTERPRETER_MAX_NAME - 1] = '\0';
     new_var->type = type;
+    new_var->declaration_line = instance->execution_position;
     
     switch (type) {
         case TYPE_INT:
@@ -326,9 +421,14 @@ Interpreter_Value* interpreter_get_variable(Interpreter_Instance* instance, cons
             return current_frame->refs[i].value_ptr;
         }
     }
-    
+
     for (int i = 0; i < current_frame->local_var_count; i++) {
         if (interpreter_ci_strcmp(current_frame->local_vars[i].name, name) == 0) {
+            if (instance->execution_position < current_frame->local_vars[i].declaration_line) {
+                printf("Error: Variable %s accessed before declaration (declared on line %d, accessed on line %d)\n", name, current_frame->local_vars[i].declaration_line + 1, instance->execution_position + 1);
+                interpreter_halt();
+                return (void*)0;
+            }
             return &current_frame->local_vars[i].value;
         }
     }
@@ -338,7 +438,7 @@ Interpreter_Value* interpreter_get_variable(Interpreter_Instance* instance, cons
     return (void*)0;
 }
 
-void intepreter_set_variable(Interpreter_Instance* instance, const char* name, Interpreter_Value value)
+void interpreter_set_variable(Interpreter_Instance* instance, const char* name, Interpreter_Value value)
 {
     if (instance->stack_pointer < 0) {
         printf("Error: No active call frame for variable assignment\n");
@@ -357,6 +457,11 @@ void intepreter_set_variable(Interpreter_Instance* instance, const char* name, I
     
     for (int i = 0; i < current_frame->local_var_count; i++) {
         if (interpreter_ci_strcmp(current_frame->local_vars[i].name, name) == 0) {
+            if (instance->execution_position < current_frame->local_vars[i].declaration_line) {
+                printf("Error: Variable %s assigned before declaration (declared on line %d, accessed on line %d)\n", name, current_frame->local_vars[i].declaration_line + 1, instance->execution_position + 1);
+                interpreter_halt();
+                return;
+            }
             current_frame->local_vars[i].value = value;
             return;
         }
@@ -385,6 +490,11 @@ void interpreter_set_reference_parameter(Interpreter_Instance* instance, const c
 
     for (int i = 0; i < caller_frame->local_var_count; i++) {
         if (interpreter_ci_strcmp(caller_frame->local_vars[i].name, var_name) == 0) {
+            if (instance->execution_position < caller_frame->local_vars[i].declaration_line) {
+                printf("Error: Variable %s (passed by reference) used before declaration (declared on line %d, referenced at call on line %d)\n", var_name, caller_frame->local_vars[i].declaration_line + 1, instance->execution_position + 1);
+                interpreter_halt();
+                return;
+            }
             var_ptr = &caller_frame->local_vars[i].value;
             break;
         }
@@ -466,8 +576,7 @@ int interpreter_call_function(Interpreter_Instance* instance, const char* functi
     }
 
     if (arg_count != target_function->param_count) {
-        printf("Error: Function %s expects %d parameters, got %d\n", 
-               function_name, target_function->param_count, arg_count);
+        printf("Error: Function %s expects %d parameters, got %d\n", function_name, target_function->param_count, arg_count);
         interpreter_halt();
         return -1;
     }
@@ -493,7 +602,7 @@ int interpreter_call_function(Interpreter_Instance* instance, const char* functi
             Interpreter_Value value_copy = *arg_value;
             instance->stack_pointer++;
             
-            intepreter_set_variable(instance, target_function->params[i].name, value_copy);
+            interpreter_set_variable(instance, target_function->params[i].name, value_copy);
         }
     }
 

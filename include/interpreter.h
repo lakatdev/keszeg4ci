@@ -14,7 +14,9 @@ void interpreter_halt();
 int interpreter_call_function(Interpreter_Instance* instance, const char* function_name, char** arg_names, int arg_count);
 void interpreter_declare_variable(Interpreter_Instance* instance, const char* name, Interpreter_VarType type);
 Interpreter_Value* interpreter_get_variable(Interpreter_Instance* instance, const char* name);
-void intepreter_set_variable(Interpreter_Instance* instance, const char* name, Interpreter_Value value);
+Interpreter_Value interpreter_get_value_of_token(Interpreter_Instance* instance, const char* token);
+Interpreter_VarType interpreter_get_type(const char* type_str);
+void interpreter_set_variable(Interpreter_Instance* instance, const char* name, Interpreter_Value value);
 void interpreter_set_reference_parameter(Interpreter_Instance* instance, const char* param_name, const char* var_name);
 
 #endif
