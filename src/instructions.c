@@ -297,7 +297,11 @@ void interpreter_execute_cat(Interpreter_Instance* instance, char** tokens, int 
     }
 }
 
-void interpreter_execute_clear(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_clear\n");}
+void interpreter_execute_clear(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    printf("\033[2J\033[H");
+    fflush(stdout);
+}
 
 void interpreter_execute_declare(Interpreter_Instance* instance, char** tokens, int token_count)
 {
