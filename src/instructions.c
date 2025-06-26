@@ -228,7 +228,83 @@ void interpreter_execute_call_assign(Interpreter_Instance* instance, char** toke
     }
 }
 
-void interpreter_execute_cat(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_cat\n");}
+void interpreter_execute_cat(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 4) {
+        printf("Error: CAT instruction requires at least 4 tokens.\n");
+        interpreter_halt();
+        return;
+    }
+
+    const char* dest_var_name = tokens[1];
+    const char* mode = tokens[2];
+
+    Interpreter_Value* dest_var = interpreter_get_variable(instance, dest_var_name);
+    if (!dest_var || dest_var->type != TYPE_STRING) {
+        printf("Error: Destination variable '%s' is not a string.\n", dest_var_name);
+        interpreter_halt();
+        return;
+    }
+
+    if (interpreter_ci_strcmp(mode, "const") == 0) {
+        size_t dest_len = dest_var->string.size;
+        size_t max_len = INTERPRETER_MAX_ARRAY_SIZE;
+        size_t total_append = 0;
+
+        for (int i = 3; i < token_count; ++i) {
+            total_append += strlen(tokens[i]);
+            if (i < token_count - 1) total_append += 1;
+        }
+        if (dest_len + total_append > max_len) {
+            total_append = max_len - dest_len;
+        }
+
+        size_t appended = 0;
+        for (int i = 3; i < token_count && appended < total_append; ++i) {
+            size_t chunk = strlen(tokens[i]);
+            if (appended + chunk > total_append) {
+                chunk = total_append - appended;
+            }
+            memcpy(dest_var->string.data + dest_len + appended, tokens[i], chunk);
+            appended += chunk;
+            if (i < token_count - 1 && appended < total_append) {
+                dest_var->string.data[dest_len + appended] = ' ';
+                appended += 1;
+            }
+        }
+        dest_var->string.size = dest_len + appended;
+    }
+    else if (interpreter_ci_strcmp(mode, "string") == 0) {
+        if (token_count < 4) {
+            printf("Error: CAT string mode requires a source variable.\n");
+            interpreter_halt();
+            return;
+        }
+        const char* src_var_name = tokens[3];
+        Interpreter_Value* src_var = interpreter_get_variable(instance, src_var_name);
+        if (!src_var || src_var->type != TYPE_STRING) {
+            printf("Error: Source variable '%s' is not a string.\n", src_var_name);
+            interpreter_halt();
+            return;
+        }
+        size_t dest_len = dest_var->string.size;
+        size_t src_len = src_var->string.size;
+        size_t max_len = INTERPRETER_MAX_ARRAY_SIZE;
+
+        if (dest_len + src_len > max_len) {
+            src_len = max_len - dest_len;
+        }
+
+        memcpy(dest_var->string.data + dest_len, src_var->string.data, src_len);
+        dest_var->string.size = dest_len + src_len;
+    }
+    else {
+        printf("Error: Unknown CAT mode '%s'.\n", mode);
+        interpreter_halt();
+        return;
+    }
+}
+
 void interpreter_execute_clear(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_clear\n");}
 
 void interpreter_execute_declare(Interpreter_Instance* instance, char** tokens, int token_count)

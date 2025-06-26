@@ -284,13 +284,11 @@ Interpreter_Value interpreter_get_value_of_token(Interpreter_Instance* instance,
         if (var_val_ptr != NULL) {
             return *var_val_ptr;
         }
-        
         return val;
     }
 
     unsigned long long int len = strlen(token);
     char* endptr_byte_num;
-    char* endptr_float;
     char* endptr_int;
 
     if (len > 1 && (token[len - 1] == 'b' || token[len - 1] == 'B')) {
@@ -311,30 +309,40 @@ Interpreter_Value interpreter_get_value_of_token(Interpreter_Instance* instance,
         }
     }
 
-    float temp_float = strtof(token, &endptr_float);
-
-    if (token != endptr_float) {
-        if (*endptr_float == '\0') {
-            val.type = TYPE_FLOAT;
-            val.f = temp_float;
-            return val;
+    int is_float = 0;
+    for (unsigned long long int i = 0; i < len; ++i) {
+        if (token[i] == '.' || token[i] == 'e' || token[i] == 'E') {
+            is_float = 1;
+            break;
         }
-        else if ((*endptr_float == 'f' || *endptr_float == 'F') && (endptr_float == &token[len - 1])) {
-            val.type = TYPE_FLOAT;
-            val.f = temp_float;
-            return val;
+    }
+    if (!is_float && len > 1 && (token[len - 1] == 'f' || token[len - 1] == 'F')) {
+        is_float = 1;
+    }
+
+    if (is_float) {
+        char* endptr_float;
+        float temp_float = strtof(token, &endptr_float);
+        if (token != endptr_float) {
+            if (*endptr_float == '\0' ||
+                ((*endptr_float == 'f' || *endptr_float == 'F') && endptr_float == &token[len - 1])) {
+                val.type = TYPE_FLOAT;
+                val.f = temp_float;
+                return val;
+            }
+        }
+    }
+    else {
+        long temp_int_long = strtol(token, &endptr_int, 10);
+        if (token != endptr_int && *endptr_int == '\0') {
+            if (temp_int_long >= INT_MIN && temp_int_long <= INT_MAX) {
+                val.type = TYPE_INT;
+                val.i = (int)temp_int_long;
+                return val;
+            }
         }
     }
 
-    long temp_int_long = strtol(token, &endptr_int, 10);
-
-    if (token != endptr_int && *endptr_int == '\0') {
-        if (temp_int_long >= INT_MIN && temp_int_long <= INT_MAX) {
-            val.type = TYPE_INT;
-            val.i = (int)temp_int_long;
-            return val;
-        }
-    }
     return val;
 }
 
