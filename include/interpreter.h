@@ -18,5 +18,6 @@ Interpreter_Value interpreter_get_value_of_token(Interpreter_Instance* instance,
 Interpreter_VarType interpreter_get_type(const char* type_str);
 void interpreter_set_variable(Interpreter_Instance* instance, const char* name, Interpreter_Value value);
 void interpreter_set_reference_parameter(Interpreter_Instance* instance, const char* param_name, const char* var_name);
+int interpreter_ci_strcmp(const char* str1, const char* str2);
 
 #endif

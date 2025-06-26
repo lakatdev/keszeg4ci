@@ -375,6 +375,7 @@ void interpreter_declare_variable(Interpreter_Instance* instance, const char* na
     new_var->name[INTERPRETER_MAX_NAME - 1] = '\0';
     new_var->type = type;
     new_var->declaration_line = instance->execution_position;
+    new_var->value.type = type;
     
     switch (type) {
         case TYPE_INT:

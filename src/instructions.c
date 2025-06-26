@@ -2,8 +2,10 @@
 #include <interpreter.h>
 #include <instance.h>
 #include <stdio.h>
-
+#include <unistd.h>
 #include <string.h>
+#include <time.h>
+#include <stdlib.h>
 
 void interpreter_execute_add(Interpreter_Instance* instance, char** tokens, int token_count)
 {
@@ -209,7 +211,7 @@ void interpreter_execute_call_assign(Interpreter_Instance* instance, char** toke
     }
 
     const char* dest_var_name = tokens[0];
-    const char* function_name = tokens[2];
+    const char* function_name = tokens[3];
     int arg_count = token_count - 4;
 
     char** arg_names = (void*)0;
@@ -218,7 +220,7 @@ void interpreter_execute_call_assign(Interpreter_Instance* instance, char** toke
     }
 
     Interpreter_CallFrame* current_frame = &instance->call_stack[instance->stack_pointer];
-    current_frame->return_var = interpreter_get_variable(instance, dest_var_name);
+    current_frame->return_var = dest_var_name;
 
     int result = interpreter_call_function(instance, function_name, arg_names, arg_count);
     if (result == -1) {
@@ -824,7 +826,83 @@ void interpreter_execute_end(Interpreter_Instance* instance, char** tokens, int 
 void interpreter_execute_exec(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_exec\n");}
 void interpreter_execute_free(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_free\n");}
 void interpreter_execute_if(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_if\n");}
-void interpreter_execute_input(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_input\n");}
+
+void interpreter_execute_input(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 3) {
+        printf("Error: INPUT instruction requires a mode and a variable name.\n");
+        interpreter_halt();
+        return;
+    }
+
+    const char* mode = tokens[1];
+    const char* var_name = tokens[2];
+
+    if (interpreter_ci_strcmp(mode, "$") == 0) {
+        char buffer[64];
+        if (!fgets(buffer, sizeof(buffer), stdin)) {
+            printf("Error: Failed to read input.\n");
+            interpreter_halt();
+            return;
+        }
+
+        char* endptr = NULL;
+        double val = strtod(buffer, &endptr);
+        Interpreter_Value result;
+        memset(&result, 0, sizeof(Interpreter_Value));
+        if (endptr && (*endptr == 'f' || *endptr == 'F')) {
+            result.type = TYPE_FLOAT;
+            result.f = (float)val;
+        }
+        else if (strchr(buffer, '.') || strchr(buffer, 'e') || strchr(buffer, 'E')) {
+            result.type = TYPE_FLOAT;
+            result.f = (float)val;
+        }
+        else {
+            result.type = TYPE_INT;
+            result.i = (int)val;
+        }
+        interpreter_set_variable(instance, var_name, result);
+    }
+    else if (interpreter_ci_strcmp(mode, "ascii") == 0) {
+        int ch = getchar();
+        if (ch != '\n') {
+            int next = getchar();
+            if (next != '\n' && next != EOF) ungetc(next, stdin);
+        }
+        Interpreter_Value result;
+        memset(&result, 0, sizeof(Interpreter_Value));
+        result.type = TYPE_INT;
+        result.i = ch;
+        interpreter_set_variable(instance, var_name, result);
+    }
+    else if (interpreter_ci_strcmp(mode, "string") == 0) {
+        Interpreter_Value* str_var = interpreter_get_variable(instance, var_name);
+        if (!str_var || str_var->type != TYPE_STRING) {
+            printf("Error: Variable '%s' is not a string.\n", var_name);
+            interpreter_halt();
+            return;
+        }
+        char buffer[INTERPRETER_MAX_ARRAY_SIZE];
+        if (!fgets(buffer, sizeof(buffer), stdin)) {
+            printf("Error: Failed to read input.\n");
+            interpreter_halt();
+            return;
+        }
+        size_t len = strlen(buffer);
+        if (len > 0 && buffer[len - 1] == '\n') buffer[len - 1] = '\0';
+        len = strlen(buffer);
+        if (len > INTERPRETER_MAX_ARRAY_SIZE) len = INTERPRETER_MAX_ARRAY_SIZE;
+        memcpy(str_var->string.data, buffer, len);
+        str_var->string.size = len;
+    }
+    else {
+        printf("Error: Unknown INPUT mode '%s'.\n", mode);
+        interpreter_halt();
+        return;
+    }
+}
+
 void interpreter_execute_load(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_load\n");}
 
 void interpreter_execute_print(Interpreter_Instance* instance, char** tokens, int token_count)
@@ -903,7 +981,39 @@ void interpreter_execute_println(Interpreter_Instance* instance, char** tokens, 
     printf("\n");
 }
 
-void interpreter_execute_random(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_random\n");}
+void interpreter_execute_random(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 3) {
+        printf("Error: RANDOM instruction requires variable and upper bound.\n");
+        interpreter_halt();
+        return;
+    }
+
+    const char* var_name = tokens[1];
+    Interpreter_Value upper_val = interpreter_get_value_of_token(instance, tokens[2]);
+    if (upper_val.type != TYPE_INT && upper_val.type != TYPE_BYTE) {
+        printf("Error: RANDOM upper bound must be integer or byte.\n");
+        interpreter_halt();
+        return;
+    }
+    int upper = (upper_val.type == TYPE_INT) ? upper_val.i : upper_val.b;
+    if (upper <= 0) {
+        printf("Error: RANDOM upper bound must be > 0.\n");
+        interpreter_halt();
+        return;
+    }
+
+    static int seeded = 0;
+    if (!seeded) {
+        srand((unsigned int)time(NULL));
+        seeded = 1;
+    }
+
+    Interpreter_Value result;
+    result.type = TYPE_INT;
+    result.i = rand() % upper;
+    interpreter_set_variable(instance, var_name, result);
+}
 
 void interpreter_execute_return(Interpreter_Instance* instance, char** tokens, int token_count)
 {
@@ -916,11 +1026,6 @@ void interpreter_execute_return(Interpreter_Instance* instance, char** tokens, i
             interpreter_halt();
             return;
         }
-
-        if (instance->stack_pointer > 0) {
-            Interpreter_CallFrame* caller_frame = &instance->call_stack[instance->stack_pointer - 1];
-            interpreter_set_variable(instance, caller_frame->return_var, return_value);
-        }
     }
 
     if (instance->stack_pointer <= 0) {
@@ -930,12 +1035,82 @@ void interpreter_execute_return(Interpreter_Instance* instance, char** tokens, i
     else {
         instance->execution_position = instance->call_stack[instance->stack_pointer].return_address;
         instance->stack_pointer--;
+
+        if (instance->stack_pointer >= 0) {
+            Interpreter_CallFrame* caller_frame = &instance->call_stack[instance->stack_pointer];
+            interpreter_set_variable(instance, caller_frame->return_var, return_value);
+        }
     }
 }
 
 void interpreter_execute_save(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_save\n");}
-void interpreter_execute_sizeof(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_sizeof\n");}
-void interpreter_execute_sleep(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_sleep\n");}
+
+void interpreter_execute_sizeof(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 3) {
+        printf("Error: SIZEOF instruction requires a destination variable and a source array/string.\n");
+        interpreter_halt();
+        return;
+    }
+
+    const char* dest_var_name = tokens[0];
+    const char* src_var_name = tokens[2];
+
+    Interpreter_Value* src_val = interpreter_get_variable(instance, src_var_name);
+    if (!src_val) {
+        printf("Error: Variable '%s' not found for SIZEOF.\n", src_var_name);
+        interpreter_halt();
+        return;
+    }
+
+    int size = 0;
+    switch (src_val->type) {
+        case TYPE_IARRAY:
+            size = src_val->iarray.size;
+            break;
+        case TYPE_FARRAY:
+            size = src_val->farray.size;
+            break;
+        case TYPE_STRING:
+            size = src_val->string.size;
+            break;
+        default:
+            printf("Error: SIZEOF only supports arrays and strings.\n");
+            interpreter_halt();
+            return;
+    }
+
+    Interpreter_Value result;
+    memset(&result, 0, sizeof(Interpreter_Value));
+    result.type = TYPE_INT;
+    result.i = size;
+    interpreter_set_variable(instance, dest_var_name, result);
+}
+
+void interpreter_execute_sleep(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 2) {
+        printf("Error: SLEEP instruction requires a millisecond constant.\n");
+        interpreter_halt();
+        return;
+    }
+
+    Interpreter_Value ms_val = interpreter_get_value_of_token(instance, tokens[1]);
+    if (ms_val.type != TYPE_INT && ms_val.type != TYPE_BYTE) {
+        printf("Error: SLEEP time must be an integer or byte.\n");
+        interpreter_halt();
+        return;
+    }
+    int ms = (ms_val.type == TYPE_INT) ? ms_val.i : ms_val.b;
+
+    if (ms < 0) {
+        printf("Error: SLEEP time must be non-negative.\n");
+        interpreter_halt();
+        return;
+    }
+    usleep(ms * 1000);
+}
+
 void interpreter_execute_while(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_while\n");}
 
 Interpreter_Instruction_AttributeMatcher declare_matchers[] = { {"@", 0} };
