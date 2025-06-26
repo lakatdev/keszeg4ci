@@ -269,6 +269,29 @@ int is_purely_alphabetic(const char* str)
     return 1;
 }
 
+void interpreter_parse_const_escapes(const char* src, char* dest, unsigned long long int max_len)
+{
+    size_t si = 0, di = 0;
+    while (src[si] && di + 1 < max_len) {
+        if (src[si] == '\\') {
+            char next = src[si + 1];
+            switch (next) {
+                case 'n': case 'N': dest[di++] = '\n'; si += 2; break;
+                case 't': case 'T': dest[di++] = '\t'; si += 2; break;
+                case 's': case 'S': dest[di++] = ' ';  si += 2; break;
+                case 'h': case 'H': dest[di++] = '#';  si += 2; break;
+                case 'c': case 'C': dest[di++] = ',';  si += 2; break;
+                case '\\':          dest[di++] = '\\'; si += 2; break;
+                case '\0':          si++; break;
+                default:            dest[di++] = src[si++]; break;
+            }
+        } else {
+            dest[di++] = src[si++];
+        }
+    }
+    dest[di] = '\0';
+}
+
 Interpreter_Value interpreter_get_value_of_token(Interpreter_Instance* instance, const char* token)
 {
     Interpreter_Value val;

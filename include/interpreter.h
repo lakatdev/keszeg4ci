@@ -10,6 +10,7 @@ void interpreter_dump_tokens(Interpreter_Instance* instance);
 int interpreter_parse_functions(Interpreter_Instance* instance);
 void interpreter_dump_functions(Interpreter_Instance* instance);
 void interpreter_halt();
+void interpreter_parse_const_escapes(const char* src, char* dest, unsigned long long int max_len);
 
 int interpreter_call_function(Interpreter_Instance* instance, const char* function_name, char** arg_names, int arg_count);
 void interpreter_declare_variable(Interpreter_Instance* instance, const char* name, Interpreter_VarType type);

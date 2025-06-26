@@ -249,25 +249,17 @@ void interpreter_execute_cat(Interpreter_Instance* instance, char** tokens, int 
     if (interpreter_ci_strcmp(mode, "const") == 0) {
         size_t dest_len = dest_var->string.size;
         size_t max_len = INTERPRETER_MAX_ARRAY_SIZE;
-        size_t total_append = 0;
+        char temp[INTERPRETER_MAX_ARRAY_SIZE];
+        size_t appended = 0;
 
         for (int i = 3; i < token_count; ++i) {
-            total_append += strlen(tokens[i]);
-            if (i < token_count - 1) total_append += 1;
-        }
-        if (dest_len + total_append > max_len) {
-            total_append = max_len - dest_len;
-        }
-
-        size_t appended = 0;
-        for (int i = 3; i < token_count && appended < total_append; ++i) {
-            size_t chunk = strlen(tokens[i]);
-            if (appended + chunk > total_append) {
-                chunk = total_append - appended;
-            }
-            memcpy(dest_var->string.data + dest_len + appended, tokens[i], chunk);
+            interpreter_parse_const_escapes(tokens[i], temp, sizeof(temp));
+            size_t chunk = strlen(temp);
+            if (dest_len + appended + chunk > max_len)
+                chunk = max_len - dest_len - appended;
+            memcpy(dest_var->string.data + dest_len + appended, temp, chunk);
             appended += chunk;
-            if (i < token_count - 1 && appended < total_append) {
+            if (i < token_count - 1 && dest_len + appended < max_len) {
                 dest_var->string.data[dest_len + appended] = ' ';
                 appended += 1;
             }
@@ -1006,11 +998,11 @@ void interpreter_execute_print(Interpreter_Instance* instance, char** tokens, in
         fwrite(val->string.data, 1, val->string.size, stdout);
     }
     else if (interpreter_ci_strcmp(mode, "const") == 0) {
+        char temp[INTERPRETER_MAX_ARRAY_SIZE];
         for (int i = 2; i < token_count; ++i) {
-            printf("%s", tokens[i]);
-            if (i < token_count - 1) {
-                printf(" ");
-            }
+            interpreter_parse_const_escapes(tokens[i], temp, sizeof(temp));
+            printf("%s", temp);
+            if (i < token_count - 1) printf(" ");
         }
     }
     else if (interpreter_ci_strcmp(mode, "$") == 0) {
