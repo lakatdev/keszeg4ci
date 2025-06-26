@@ -11,6 +11,7 @@ typedef struct {
     Interpreter_Variable local_vars[INTERPRETER_MAX_VARIABLES];
     int ref_count;
     Interpreter_Reference refs[INTERPRETER_MAX_PARAMETERS];
+    Interpreter_Variable* return_var;
 } Interpreter_CallFrame;
 
 typedef struct {

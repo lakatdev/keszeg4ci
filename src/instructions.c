@@ -200,7 +200,32 @@ void interpreter_execute_call(Interpreter_Instance* instance, char** tokens, int
     }
 }
 
-void interpreter_execute_call_assign(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_call_assign\n");}
+void interpreter_execute_call_assign(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 4) {
+        printf("Error: CALL_ASSIGN instruction requires more tokens.\n");
+        interpreter_halt();
+        return;
+    }
+
+    const char* dest_var_name = tokens[0];
+    const char* function_name = tokens[2];
+    int arg_count = token_count - 4;
+
+    char** arg_names = (void*)0;
+    if (arg_count > 0) {
+        arg_names = &tokens[4];
+    }
+
+    Interpreter_CallFrame* current_frame = &instance->call_stack[instance->stack_pointer];
+    current_frame->return_var = interpreter_get_variable(instance, dest_var_name);
+
+    int result = interpreter_call_function(instance, function_name, arg_names, arg_count);
+    if (result == -1) {
+        return;
+    }
+}
+
 void interpreter_execute_cat(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_cat\n");}
 void interpreter_execute_clear(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_clear\n");}
 
@@ -587,9 +612,9 @@ void interpreter_execute_divide_assign(Interpreter_Instance* instance, char** to
 
     Interpreter_Value* target_var_ptr = interpreter_get_variable(instance, var_name);
     if (target_var_ptr == NULL) {
-         printf("Error: Variable not declared for DIVIDE_ASSIGN operation.\n");
-         interpreter_halt();
-         return;
+        printf("Error: Variable not declared for DIVIDE_ASSIGN operation.\n");
+        interpreter_halt();
+        return;
     }
     Interpreter_Value current_val = *target_var_ptr;
     Interpreter_Value val_to_divide = interpreter_get_value_of_token(instance, value_token);
@@ -660,9 +685,9 @@ void interpreter_execute_divide_assign(Interpreter_Instance* instance, char** to
     }
     else if (current_val.type == TYPE_BYTE) {
         long long divisor_b_as_i = 0;
-         if (val_to_divide.type == TYPE_BYTE) {
-            divisor_b_as_i = val_to_divide.b;
-         }
+        if (val_to_divide.type == TYPE_BYTE) {
+        divisor_b_as_i = val_to_divide.b;
+        }
         else if (val_to_divide.type == TYPE_INT) {
             divisor_b_as_i = val_to_divide.i;
         }
@@ -801,10 +826,113 @@ void interpreter_execute_free(Interpreter_Instance* instance, char** tokens, int
 void interpreter_execute_if(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_if\n");}
 void interpreter_execute_input(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_input\n");}
 void interpreter_execute_load(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_load\n");}
-void interpreter_execute_print(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_print\n");}
-void interpreter_execute_println(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_println\n");}
+
+void interpreter_execute_print(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 2) {
+        printf("Error: PRINT instruction requires at least 2 tokens.\n");
+        interpreter_halt();
+        return;
+    }
+
+    const char* mode = tokens[1];
+
+    if (interpreter_ci_strcmp(mode, "string") == 0) {
+        if (token_count < 3) {
+            printf("Error: PRINT string requires a variable name.\n");
+            interpreter_halt();
+            return;
+        }
+        Interpreter_Value* val = interpreter_get_variable(instance, tokens[2]);
+        if (!val || val->type != TYPE_STRING) {
+            printf("Error: Variable '%s' is not a string.\n", tokens[2]);
+            interpreter_halt();
+            return;
+        }
+        fwrite(val->string.data, 1, val->string.size, stdout);
+    }
+    else if (interpreter_ci_strcmp(mode, "const") == 0) {
+        for (int i = 2; i < token_count; ++i) {
+            printf("%s", tokens[i]);
+            if (i < token_count - 1) {
+                printf(" ");
+            }
+        }
+    }
+    else if (interpreter_ci_strcmp(mode, "$") == 0) {
+        if (token_count < 3) {
+            printf("Error: PRINT $ requires a variable or value.\n");
+            interpreter_halt();
+            return;
+        }
+        Interpreter_Value val = interpreter_get_value_of_token(instance, tokens[2]);
+        switch (val.type) {
+            case TYPE_INT: printf("%d", val.i); break;
+            case TYPE_FLOAT: printf("%g", val.f); break;
+            case TYPE_BYTE: printf("%u", val.b); break;
+            default: printf("Error: Unsupported type for PRINT $.\n"); interpreter_halt(); return;
+        }
+    }
+    else if (interpreter_ci_strcmp(mode, "ascii") == 0) {
+        if (token_count < 3) {
+            printf("Error: PRINT ascii requires a variable or value.\n");
+            interpreter_halt();
+            return;
+        }
+        Interpreter_Value val = interpreter_get_value_of_token(instance, tokens[2]);
+        int ch = 0;
+        if (val.type == TYPE_INT) ch = val.i;
+        else if (val.type == TYPE_BYTE) ch = val.b;
+        else {
+            printf("Error: PRINT ascii requires int or byte.\n");
+            interpreter_halt();
+            return;
+        }
+        printf("%c", ch);
+    }
+    else {
+        printf("Error: Unknown PRINT mode '%s'.\n", mode);
+        interpreter_halt();
+        return;
+    }
+}
+
+void interpreter_execute_println(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    interpreter_execute_print(instance, tokens, token_count);
+    printf("\n");
+}
+
 void interpreter_execute_random(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_random\n");}
-void interpreter_execute_return(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_return\n");}
+
+void interpreter_execute_return(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    Interpreter_Value return_value;
+    memset(&return_value, 0, sizeof(Interpreter_Value));
+    if (token_count > 1) {
+        return_value = interpreter_get_value_of_token(instance, tokens[1]);
+        if (return_value.type == -1) {
+            printf("Error: Invalid return value.\n");
+            interpreter_halt();
+            return;
+        }
+
+        if (instance->stack_pointer > 0) {
+            Interpreter_CallFrame* caller_frame = &instance->call_stack[instance->stack_pointer - 1];
+            interpreter_set_variable(instance, caller_frame->return_var, return_value);
+        }
+    }
+
+    if (instance->stack_pointer <= 0) {
+        instance->stack_pointer = -1;
+        instance->execution_position = -1;
+    }
+    else {
+        instance->execution_position = instance->call_stack[instance->stack_pointer].return_address;
+        instance->stack_pointer--;
+    }
+}
+
 void interpreter_execute_save(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_save\n");}
 void interpreter_execute_sizeof(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_sizeof\n");}
 void interpreter_execute_sleep(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_sleep\n");}
