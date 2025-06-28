@@ -6,6 +6,8 @@
 #include <ctype.h>
 #include <stdlib.h>
 
+char interpreter_code_path[INTERPRETER_PATH_MAX];
+
 #define INT_MIN -2147483648
 #define INT_MAX 2147483647
 
@@ -381,9 +383,14 @@ void interpreter_declare_variable(Interpreter_Instance* instance, const char* na
     
     for (int i = 0; i < current_frame->local_var_count; i++) {
         if (interpreter_ci_strcmp(current_frame->local_vars[i].name, name) == 0) {
-            printf("Error: Variable %s already declared in current scope\n", name);
-            interpreter_halt();
-            return;
+            if ( instance->stack_pointer <= current_frame->local_vars[i].declaration_line) {
+                return;
+            }
+            else {
+                printf("Error: Variable %s already declared in current scope\n", name);
+                interpreter_halt();
+                return;
+            }
         }
     }
 
@@ -715,5 +722,33 @@ int interpreter_execute(Interpreter_Instance* instance)
             instance->execution_position++;
         }
     }
+    return 0;
+}
+
+int interpreter_find_matching_end(Interpreter_Instance* instance, int start_line)
+{
+    int depth = 0;
+    for (int i = start_line + 1; i < instance->parsed_line_count; ++i) {
+        char* first_token = instance->parsed_code[i][0];
+        if (interpreter_ci_strcmp(first_token, "if") == 0 || interpreter_ci_strcmp(first_token, "while") == 0) {
+            depth++;
+        }
+        else if (interpreter_ci_strcmp(first_token, "end") == 0) {
+            if (depth == 0) return i;
+            depth--;
+        }
+    }
+    return -1;
+}
+
+int interpreter_compare(Interpreter_Value left, Interpreter_Value right, const char* op)
+{
+    double l = (left.type == TYPE_FLOAT) ? left.f : (left.type == TYPE_INT) ? left.i : (left.type == TYPE_BYTE) ? left.b : 0;
+    double r = (right.type == TYPE_FLOAT) ? right.f : (right.type == TYPE_INT) ? right.i : (right.type == TYPE_BYTE) ? right.b : 0;
+    if (strcmp(op, ">") == 0) return l > r;
+    if (strcmp(op, "<") == 0) return l < r;
+    if (strcmp(op, ">=") == 0) return l >= r;
+    if (strcmp(op, "<=") == 0) return l <= r;
+    if (strcmp(op, "=") == 0) return l == r;
     return 0;
 }

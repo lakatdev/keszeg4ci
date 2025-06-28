@@ -153,8 +153,148 @@ void interpreter_execute_add_assign(Interpreter_Instance* instance, char** token
     return;
 }
 
-void interpreter_execute_array_get(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_array_get\n");}
-void interpreter_execute_array_set(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_array_set\n");}
+void interpreter_execute_array_set(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 5) {
+        printf("Error: ARRAY_SET requires at least 5 tokens.\n");
+        interpreter_halt();
+        return;
+    }
+    const char* array_name = tokens[0];
+    const char* index_token = tokens[2];
+    const char* value_token = tokens[4];
+
+    Interpreter_Value* array_var = interpreter_get_variable(instance, array_name);
+    if (!array_var) {
+        printf("Error: ARRAY_SET: Variable '%s' not found.\n", array_name);
+        interpreter_halt();
+        return;
+    }
+    Interpreter_Value index_val = interpreter_get_value_of_token(instance, index_token);
+    int index = (index_val.type == TYPE_INT) ? index_val.i : (index_val.type == TYPE_BYTE ? index_val.b : -1);
+    if (index < 0 || index >= INTERPRETER_MAX_ARRAY_SIZE) {
+        printf("Error: ARRAY_SET: Index %d out of bounds.\n", index);
+        interpreter_halt();
+        return;
+    }
+    Interpreter_Value value = interpreter_get_value_of_token(instance, value_token);
+
+    switch (array_var->type) {
+        case TYPE_IARRAY:
+            if (index >= array_var->iarray.size) array_var->iarray.size = index + 1;
+            array_var->iarray.data[index] = value.i;
+            break;
+        case TYPE_FARRAY:
+            if (index >= array_var->farray.size) array_var->farray.size = index + 1;
+            array_var->farray.data[index] = value.f;
+            break;
+        case TYPE_STRING:
+            if (index >= array_var->string.size) array_var->string.size = index + 1;
+            array_var->string.data[index] = value.b;
+            break;
+        default:
+            printf("Error: ARRAY_SET: Not an array type.\n");
+            interpreter_halt();
+            return;
+    }
+}
+
+void interpreter_execute_array_get(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 5) {
+        printf("Error: ARRAY_GET requires at least 5 tokens.\n");
+        interpreter_halt();
+        return;
+    }
+    const char* target_name = tokens[0];
+    const char* array_name = tokens[2];
+    const char* index_token = tokens[4];
+
+    Interpreter_Value* array_var = interpreter_get_variable(instance, array_name);
+    if (!array_var) {
+        printf("Error: ARRAY_GET: Variable '%s' not found.\n", array_name);
+        interpreter_halt();
+        return;
+    }
+    Interpreter_Value index_val = interpreter_get_value_of_token(instance, index_token);
+    int index = (index_val.type == TYPE_INT) ? index_val.i : (index_val.type == TYPE_BYTE ? index_val.b : -1);
+    if (index < 0) {
+        printf("Error: ARRAY_GET: Index %d out of bounds.\n", index);
+        interpreter_halt();
+        return;
+    }
+
+    Interpreter_Value result;
+    memset(&result, 0, sizeof(Interpreter_Value));
+    switch (array_var->type) {
+        case TYPE_IARRAY:
+            if (index >= array_var->iarray.size) {
+                printf("Error: ARRAY_GET: Index %d out of bounds for iarray.\n", index);
+                interpreter_halt();
+                return;
+            }
+            result.type = TYPE_INT;
+            result.i = array_var->iarray.data[index];
+            break;
+        case TYPE_FARRAY:
+            if (index >= array_var->farray.size) {
+                printf("Error: ARRAY_GET: Index %d out of bounds for farray.\n", index);
+                interpreter_halt();
+                return;
+            }
+            result.type = TYPE_FLOAT;
+            result.f = array_var->farray.data[index];
+            break;
+        case TYPE_STRING:
+            if (index >= array_var->string.size) {
+                printf("Error: ARRAY_GET: Index %d out of bounds for string.\n", index);
+                interpreter_halt();
+                return;
+            }
+            result.type = TYPE_BYTE;
+            result.b = array_var->string.data[index];
+            break;
+        default:
+            printf("Error: ARRAY_GET: Not an array type.\n");
+            interpreter_halt();
+            return;
+    }
+    interpreter_set_variable(instance, target_name, result);
+}
+
+void interpreter_execute_free(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 2) {
+        printf("Error: FREE requires at least 2 tokens.\n");
+        interpreter_halt();
+        return;
+    }
+    const char* var_name = tokens[1];
+    Interpreter_Value* var = interpreter_get_variable(instance, var_name);
+    if (!var) {
+        printf("Error: FREE: Variable '%s' not found.\n", var_name);
+        interpreter_halt();
+        return;
+    }
+    switch (var->type) {
+        case TYPE_IARRAY:
+            memset(var->iarray.data, 0, sizeof(var->iarray.data));
+            var->iarray.size = 0;
+            break;
+        case TYPE_FARRAY:
+            memset(var->farray.data, 0, sizeof(var->farray.data));
+            var->farray.size = 0;
+            break;
+        case TYPE_STRING:
+            memset(var->string.data, 0, sizeof(var->string.data));
+            var->string.size = 0;
+            break;
+        default:
+            printf("Error: FREE can only be used on array types.\n");
+            interpreter_halt();
+            return;
+    }
+}
 
 void interpreter_execute_assign(Interpreter_Instance* instance, char** tokens, int token_count)
 {
@@ -180,8 +320,6 @@ void interpreter_execute_assign(Interpreter_Instance* instance, char** tokens, i
 
 void interpreter_execute_call(Interpreter_Instance* instance, char** tokens, int token_count)
 {
-    printf("interpreter_execute_call\n");
-
     if (token_count < 2) {
         printf("Error: CALL instruction requires function name\n");
         interpreter_halt();
@@ -894,10 +1032,119 @@ void interpreter_execute_mod_assign(Interpreter_Instance* instance, char** token
     interpreter_set_variable(instance, var_name, result);
 }
 
-void interpreter_execute_end(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_end\n");}
-void interpreter_execute_exec(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_exec\n");}
-void interpreter_execute_free(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_free\n");}
-void interpreter_execute_if(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_if\n");}
+void interpreter_execute_exec(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 3) {
+        printf("Error: EXEC requires a mode and argument.\n");
+        interpreter_halt();
+        return;
+    }
+
+    const char* mode = tokens[1];
+
+    if (interpreter_ci_strcmp(mode, "const") == 0) {
+        char command[1024] = {0};
+        size_t pos = 0;
+        for (int i = 2; i < token_count; ++i) {
+            size_t len = strlen(tokens[i]);
+            if (pos + len + 2 >= sizeof(command)) break;
+            memcpy(command + pos, tokens[i], len);
+            pos += len;
+            if (i < token_count - 1) command[pos++] = ' ';
+        }
+        command[pos] = '\0';
+        int ret = system(command);
+        if (ret == -1) {
+            printf("Error: EXEC system() failed.\n");
+            interpreter_halt();
+        }
+    }
+    else if (interpreter_ci_strcmp(mode, "string") == 0) {
+        Interpreter_Value* str_var = interpreter_get_variable(instance, tokens[2]);
+        if (!str_var || str_var->type != TYPE_STRING) {
+            printf("Error: EXEC string: variable '%s' not found or not a string.\n", tokens[2]);
+            interpreter_halt();
+            return;
+        }
+        char command[INTERPRETER_MAX_ARRAY_SIZE + 1] = {0};
+        memcpy(command, str_var->string.data, str_var->string.size);
+        command[str_var->string.size] = '\0';
+        int ret = system(command);
+        if (ret == -1) {
+            printf("Error: EXEC system() failed.\n");
+            interpreter_halt();
+        }
+    }
+    else {
+        printf("Error: Unknown EXEC mode '%s'.\n", mode);
+        interpreter_halt();
+    }
+}
+
+void interpreter_execute_if(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 4) {
+        printf("Error: IF requires at least 4 tokens (if X > Y).\n");
+        interpreter_halt();
+        return;
+    }
+    Interpreter_Value left = interpreter_get_value_of_token(instance, tokens[1]);
+    Interpreter_Value right = interpreter_get_value_of_token(instance, tokens[3]);
+    const char* op = tokens[2];
+
+    if (!interpreter_compare(left, right, op)) {
+        int end_line = interpreter_find_matching_end(instance, instance->execution_position);
+        if (end_line == -1) {
+            printf("Error: No matching end for if.\n");
+            interpreter_halt();
+            return;
+        }
+        instance->execution_position = end_line;
+    }
+}
+
+void interpreter_execute_while(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 4) {
+        printf("Error: WHILE requires at least 4 tokens (while X > Y).\n");
+        interpreter_halt();
+        return;
+    }
+    Interpreter_Value left = interpreter_get_value_of_token(instance, tokens[1]);
+    Interpreter_Value right = interpreter_get_value_of_token(instance, tokens[3]);
+    const char* op = tokens[2];
+
+    if (!interpreter_compare(left, right, op)) {
+        int end_line = interpreter_find_matching_end(instance, instance->execution_position);
+        if (end_line == -1) {
+            printf("Error: No matching end for while.\n");
+            interpreter_halt();
+            return;
+        }
+        instance->execution_position = end_line;
+    }
+}
+
+void interpreter_execute_end(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    int depth = 0;
+    for (int i = instance->execution_position - 1; i >= 0; --i) {
+        char* first_token = instance->parsed_code[i][0];
+        if (interpreter_ci_strcmp(first_token, "end") == 0) {
+            depth++;
+        }
+        else if (interpreter_ci_strcmp(first_token, "while") == 0) {
+            if (depth == 0) {
+                instance->execution_position = i - 1;
+                return;
+            }
+            depth--;
+        }
+        else if (interpreter_ci_strcmp(first_token, "if") == 0) {
+            depth--;
+        }
+    }
+}
 
 void interpreter_execute_input(Interpreter_Instance* instance, char** tokens, int token_count)
 {
@@ -975,7 +1222,103 @@ void interpreter_execute_input(Interpreter_Instance* instance, char** tokens, in
     }
 }
 
-void interpreter_execute_load(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_load\n");}
+void interpreter_execute_save(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 4) {
+        printf("Error: SAVE requires type, variable, and path.\n");
+        interpreter_halt();
+        return;
+    }
+    const char* type = tokens[1];
+    const char* var_name = tokens[2];
+    const char* path = tokens[3];
+
+    Interpreter_Value* var = interpreter_get_variable(instance, var_name);
+    if (!var) {
+        printf("Error: SAVE: Variable '%s' not found.\n", var_name);
+        interpreter_halt();
+        return;
+    }
+
+    FILE* f = fopen(path, "wb");
+    if (!f) {
+        printf("Error: Could not open file '%s' for writing.\n", path);
+        interpreter_halt();
+        return;
+    }
+
+    if (interpreter_ci_strcmp(type, "iarray") == 0 && var->type == TYPE_IARRAY) {
+        fwrite(&var->iarray.size, sizeof(int), 1, f);
+        fwrite(var->iarray.data, sizeof(int), var->iarray.size, f);
+    } else if (interpreter_ci_strcmp(type, "farray") == 0 && var->type == TYPE_FARRAY) {
+        fwrite(&var->farray.size, sizeof(int), 1, f);
+        fwrite(var->farray.data, sizeof(float), var->farray.size, f);
+    } else if (interpreter_ci_strcmp(type, "string") == 0 && var->type == TYPE_STRING) {
+        fwrite(&var->string.size, sizeof(int), 1, f);
+        fwrite(var->string.data, sizeof(unsigned char), var->string.size, f);
+    } else {
+        printf("Error: SAVE: Type mismatch or unsupported type.\n");
+        fclose(f);
+        interpreter_halt();
+        return;
+    }
+
+    fclose(f);
+}
+
+void interpreter_execute_load(Interpreter_Instance* instance, char** tokens, int token_count)
+{
+    if (token_count < 4) {
+        printf("Error: LOAD requires type, variable, and path.\n");
+        interpreter_halt();
+        return;
+    }
+    const char* type = tokens[1];
+    const char* var_name = tokens[2];
+    const char* path = tokens[3];
+
+    Interpreter_Value* var = interpreter_get_variable(instance, var_name);
+    if (!var) {
+        printf("Error: LOAD: Variable '%s' not found.\n", var_name);
+        interpreter_halt();
+        return;
+    }
+
+    FILE* f = fopen(path, "rb");
+    if (!f) {
+        printf("Error: Could not open file '%s' for reading.\n", path);
+        interpreter_halt();
+        return;
+    }
+
+    int size = 0;
+    if (interpreter_ci_strcmp(type, "iarray") == 0 && var->type == TYPE_IARRAY) {
+        fread(&size, sizeof(int), 1, f);
+        if (size > INTERPRETER_MAX_ARRAY_SIZE) size = INTERPRETER_MAX_ARRAY_SIZE;
+        fread(var->iarray.data, sizeof(int), size, f);
+        var->iarray.size = size;
+    }
+    else if (interpreter_ci_strcmp(type, "farray") == 0 && var->type == TYPE_FARRAY) {
+        fread(&size, sizeof(int), 1, f);
+        if (size > INTERPRETER_MAX_ARRAY_SIZE) size = INTERPRETER_MAX_ARRAY_SIZE;
+        fread(var->farray.data, sizeof(float), size, f);
+        var->farray.size = size;
+    }
+    else if (interpreter_ci_strcmp(type, "string") == 0 && var->type == TYPE_STRING) {
+        fread(&size, sizeof(int), 1, f);
+        if (size > INTERPRETER_MAX_ARRAY_SIZE) size = INTERPRETER_MAX_ARRAY_SIZE;
+        fread(var->string.data, sizeof(unsigned char), size, f);
+        var->string.size = size;
+    }
+    else {
+        printf("Error: LOAD: Type mismatch or unsupported type.\n");
+        fclose(f);
+        interpreter_halt();
+        return;
+    }
+
+    fclose(f);
+}
 
 void interpreter_execute_print(Interpreter_Instance* instance, char** tokens, int token_count)
 {
@@ -1115,8 +1458,6 @@ void interpreter_execute_return(Interpreter_Instance* instance, char** tokens, i
     }
 }
 
-void interpreter_execute_save(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_save\n");}
-
 void interpreter_execute_sizeof(Interpreter_Instance* instance, char** tokens, int token_count)
 {
     if (token_count < 3) {
@@ -1182,8 +1523,6 @@ void interpreter_execute_sleep(Interpreter_Instance* instance, char** tokens, in
     }
     usleep(ms * 1000);
 }
-
-void interpreter_execute_while(Interpreter_Instance* instance, char** tokens, int token_count){ printf("interpreter_execute_while\n");}
 
 Interpreter_Instruction_AttributeMatcher declare_matchers[] = { {"@", 0} };
 Interpreter_Instruction_AttributeMatcher assign_matchers[] = { {"=", 1} };

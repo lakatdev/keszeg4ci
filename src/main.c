@@ -1,11 +1,12 @@
 #include <stdio.h>
 #include <interpreter.h>
 #include <instance.h>
+#include <string.h>
 #include <config.h>
 
 int main(int argc, char* argv[])
 {
-    printf("Keszeg4ci\n");
+    //printf("Keszeg4ci\n");
     static char code[INTERPRETER_MAX_CODE];
 
     unsigned long long int code_size = 0;
@@ -18,6 +19,8 @@ int main(int argc, char* argv[])
     }
 
     FILE* f = fopen(argv[1], "r");
+    strcpy(interpreter_code_path, argv[1]);
+
     if (!f) {
         printf("Failed to open source file");
         return 1;
@@ -47,8 +50,8 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    interpreter_dump_tokens(&instance);
-    interpreter_dump_functions(&instance);
+    //interpreter_dump_tokens(&instance);
+    //interpreter_dump_functions(&instance);
 
     if (interpreter_execute(&instance) != 0) {
         printf("Failed to execute code.\n");

@@ -2,6 +2,7 @@
 #define INTERPRETER_H
 
 #include <instance.h>
+#include <config.h>
 
 void interpreter_instance_init(Interpreter_Instance* instance);
 int interpreter_load_code(Interpreter_Instance* instance, const char* code);
@@ -20,5 +21,9 @@ Interpreter_VarType interpreter_get_type(const char* type_str);
 void interpreter_set_variable(Interpreter_Instance* instance, const char* name, Interpreter_Value value);
 void interpreter_set_reference_parameter(Interpreter_Instance* instance, const char* param_name, const char* var_name);
 int interpreter_ci_strcmp(const char* str1, const char* str2);
+int interpreter_compare(Interpreter_Value left, Interpreter_Value right, const char* op);
+int interpreter_find_matching_end(Interpreter_Instance* instance, int start_line);
+
+extern char interpreter_code_path[INTERPRETER_PATH_MAX];
 
 #endif
