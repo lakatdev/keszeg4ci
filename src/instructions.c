@@ -1099,7 +1099,7 @@ void interpreter_execute_if(Interpreter_Instance* instance, char** tokens, int t
             interpreter_halt();
             return;
         }
-        instance->execution_position = end_line;
+        instance->execution_position = end_line + 1;
     }
 }
 
@@ -1121,7 +1121,7 @@ void interpreter_execute_while(Interpreter_Instance* instance, char** tokens, in
             interpreter_halt();
             return;
         }
-        instance->execution_position = end_line;
+        instance->execution_position = end_line + 1;
     }
 }
 
@@ -1135,7 +1135,7 @@ void interpreter_execute_end(Interpreter_Instance* instance, char** tokens, int 
         }
         else if (interpreter_ci_strcmp(first_token, "while") == 0) {
             if (depth == 0) {
-                instance->execution_position = i - 1;
+                instance->execution_position = i;
                 return;
             }
             depth--;

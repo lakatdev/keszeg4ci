@@ -257,17 +257,48 @@ int interpreter_parse_functions(Interpreter_Instance* instance)
     return 0;
 }
 
-int is_purely_alphabetic(const char* str)
+int is_ref_or_var(const char* token)
 {
-    if (!str || *str == '\0') {
+    if (!token || !*token) {
         return 0;
     }
-    while (*str) {
-        if (!isalpha((unsigned char)*str)) {
-            return 0;
+
+    int len = strlen(token);
+    if (len > 1 && (token[len-1] == 'b' || token[len-1] == 'B')) {
+        int i = 0;
+        if (token[0] == '-') i = 1;
+        for (; i < len-1; ++i) {
+            if (token[i] < '0' || token[i] > '9') return 1;
         }
-        str++;
+        return 0;
     }
+
+    int i = 0;
+    if (token[0] == '-') i = 1;
+    int is_digit = 1;
+    for (int j = i; token[j]; ++j) {
+        if (token[j] < '0' || token[j] > '9') {
+            is_digit = 0;
+            break;
+        }
+    }
+
+    if (is_digit && token[i]) {
+        return 0;
+    }
+
+    char* endptr = NULL;
+    float f = strtof(token, &endptr);
+    if (endptr && endptr > token) {
+        if (*endptr == '\0' || ((*endptr == 'f' || *endptr == 'F') && endptr[1] == '\0')) {
+            int has_dot = strchr(token, '.') != NULL;
+            int has_f = (endptr && (*endptr == 'f' || *endptr == 'F'));
+            if (has_dot || has_f) {
+                return 0;
+            }
+        }
+    }
+
     return 1;
 }
 
@@ -304,70 +335,69 @@ Interpreter_Value interpreter_get_value_of_token(Interpreter_Instance* instance,
         return val;
     }
 
-    if (is_purely_alphabetic(token)) {
+    if (is_ref_or_var(token)) {
         Interpreter_Value* var_val_ptr = interpreter_get_variable(instance, token);
         if (var_val_ptr != NULL) {
             return *var_val_ptr;
         }
+        val.type = -1;
         return val;
     }
 
     unsigned long long int len = strlen(token);
-    char* endptr_byte_num;
-    char* endptr_int;
 
-    if (len > 1 && (token[len - 1] == 'b' || token[len - 1] == 'B')) {
-        if (len - 1 < INTERPRETER_MAX_TOKEN_LENGTH) {
-            char numeric_part[INTERPRETER_MAX_TOKEN_LENGTH];
-            strncpy(numeric_part, token, len - 1);
-            numeric_part[len - 1] = '\0';
-
-            if (numeric_part[0] != '\0') {
-                long temp_long = strtol(numeric_part, &endptr_byte_num, 10);
-
-                if (numeric_part != endptr_byte_num && *endptr_byte_num == '\0' && temp_long >= 0 && temp_long <= 255) {
-                    val.type = TYPE_BYTE;
-                    val.b = (unsigned char)temp_long;
-                    return val;
-                }
-            }
+    if (len > 1 && (token[len-1] == 'b' || token[len-1] == 'B')) {
+        char numeric_part[INTERPRETER_MAX_TOKEN_LENGTH];
+        strncpy(numeric_part, token, len-1);
+        numeric_part[len-1] = '\0';
+        long temp_long = strtol(numeric_part, NULL, 10);
+        if (temp_long >= 0 && temp_long <= 255) {
+            val.type = TYPE_BYTE;
+            val.b = (unsigned char)temp_long;
+            return val;
+        }
+        else {
+            printf("Byte overflow: %ld\n", temp_long);
+            val.type = -1;
+            return val;
         }
     }
 
-    int is_float = 0;
-    for (unsigned long long int i = 0; i < len; ++i) {
-        if (token[i] == '.' || token[i] == 'e' || token[i] == 'E') {
-            is_float = 1;
+    int i = 0;
+    if (token[0] == '-') i = 1;
+    int is_digit = 1;
+    for (int j = i; token[j]; ++j) {
+        if (token[j] < '0' || token[j] > '9') {
+            is_digit = 0;
             break;
         }
     }
-    if (!is_float && len > 1 && (token[len - 1] == 'f' || token[len - 1] == 'F')) {
-        is_float = 1;
+    if (is_digit && token[i]) {
+        long temp_int_long = strtol(token, NULL, 10);
+        val.type = TYPE_INT;
+        val.i = (int)temp_int_long;
+        return val;
     }
 
-    if (is_float) {
-        char* endptr_float;
-        float temp_float = strtof(token, &endptr_float);
-        if (token != endptr_float) {
-            if (*endptr_float == '\0' ||
-                ((*endptr_float == 'f' || *endptr_float == 'F') && endptr_float == &token[len - 1])) {
+    char* endptr = NULL;
+    float temp_float = strtof(token, &endptr);
+    if (endptr && endptr > token) {
+        if (*endptr == '\0' || ((*endptr == 'f' || *endptr == 'F') && endptr[1] == '\0')) {
+            int has_dot = strchr(token, '.') != NULL;
+            int has_f = (endptr && (*endptr == 'f' || *endptr == 'F'));
+            if (has_dot || has_f) {
                 val.type = TYPE_FLOAT;
                 val.f = temp_float;
                 return val;
             }
         }
     }
-    else {
-        long temp_int_long = strtol(token, &endptr_int, 10);
-        if (token != endptr_int && *endptr_int == '\0') {
-            if (temp_int_long >= INT_MIN && temp_int_long <= INT_MAX) {
-                val.type = TYPE_INT;
-                val.i = (int)temp_int_long;
-                return val;
-            }
-        }
-    }
 
+    Interpreter_Value* var_val_ptr = interpreter_get_variable(instance, token);
+    if (var_val_ptr != NULL) {
+        return *var_val_ptr;
+    }
+    val.type = -1;
     return val;
 }
 
@@ -631,16 +661,14 @@ int interpreter_call_function(Interpreter_Instance* instance, const char* functi
         }
         else {
             instance->stack_pointer--;
-            Interpreter_Value* arg_value = interpreter_get_variable(instance, arg_names[i]);
-            if (arg_value == (void*)0) {
-                printf("Error: Argument variable %s not found\n", arg_names[i]);
+            Interpreter_Value value_copy = interpreter_get_value_of_token(instance, arg_names[i]);
+            if (value_copy.type == -1) {
+                printf("Error: Argument value %s is invalid\n", arg_names[i]);
                 interpreter_halt();
                 instance->stack_pointer++;
                 return -1;
             }
-            Interpreter_Value value_copy = *arg_value;
             instance->stack_pointer++;
-            
             interpreter_set_variable(instance, target_function->params[i].name, value_copy);
         }
     }

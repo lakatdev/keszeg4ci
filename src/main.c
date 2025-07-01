@@ -50,8 +50,8 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    //interpreter_dump_tokens(&instance);
-    //interpreter_dump_functions(&instance);
+    interpreter_dump_tokens(&instance);
+    interpreter_dump_functions(&instance);
 
     if (interpreter_execute(&instance) != 0) {
         printf("Failed to execute code.\n");
