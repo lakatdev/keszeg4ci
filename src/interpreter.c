@@ -778,5 +778,6 @@ int interpreter_compare(Interpreter_Value left, Interpreter_Value right, const c
     if (strcmp(op, ">=") == 0) return l >= r;
     if (strcmp(op, "<=") == 0) return l <= r;
     if (strcmp(op, "=") == 0) return l == r;
+    if (strcmp(op, "!=") == 0) return l != r;
     return 0;
 }
