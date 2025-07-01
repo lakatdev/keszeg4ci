@@ -1394,6 +1394,7 @@ void interpreter_execute_println(Interpreter_Instance* instance, char** tokens, 
 {
     interpreter_execute_print(instance, tokens, token_count);
     printf("\n");
+    fflush(stdout);
 }
 
 void interpreter_execute_random(Interpreter_Instance* instance, char** tokens, int token_count)
