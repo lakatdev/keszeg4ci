@@ -1454,7 +1454,9 @@ void interpreter_execute_return(Interpreter_Instance* instance, char** tokens, i
 
         if (instance->stack_pointer >= 0) {
             Interpreter_CallFrame* caller_frame = &instance->call_stack[instance->stack_pointer];
-            interpreter_set_variable(instance, caller_frame->return_var, return_value);
+            if (caller_frame->return_var != NULL) {
+                interpreter_set_variable(instance, caller_frame->return_var, return_value);
+            }
         }
     }
 }
