@@ -1141,6 +1141,9 @@ void interpreter_execute_end(Interpreter_Instance* instance, char** tokens, int 
             depth--;
         }
         else if (interpreter_ci_strcmp(first_token, "if") == 0) {
+            if (depth == 0) {
+                return;
+            }
             depth--;
         }
     }
